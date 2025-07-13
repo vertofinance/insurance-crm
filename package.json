@@ -1,0 +1,44 @@
+{
+  "name": "insurance-crm",
+  "version": "1.0.0",
+  "description": "Comprehensive multi-tenant insurance CRM system",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "middleware"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:middleware\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm start",
+    "dev:middleware": "cd middleware && npm run dev",
+    "build": "npm run build:backend && npm run build:frontend && npm run build:middleware",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:middleware": "cd middleware && npm run build",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install && cd ../middleware && npm install",
+    "db:migrate": "cd backend && npm run db:migrate",
+    "db:seed": "cd backend && npm run db:seed",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd backend && npm test",
+    "test:frontend": "cd frontend && npm test"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "keywords": [
+    "insurance",
+    "crm",
+    "multi-tenant",
+    "react",
+    "nodejs",
+    "typescript"
+  ],
+  "author": "Insurance CRM Team",
+  "license": "MIT"
+} 

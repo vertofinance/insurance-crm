@@ -1,0 +1,235 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Multi-tenant agency model
+model Agency {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  logo        String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users       User[]
+  customers   Customer[]
+  policies    Policy[]
+  partners    InsurancePartner[]
+  products    InsuranceProduct[]
+  sales       Sale[]
+
+  @@map("agencies")
+}
+
+// User roles enum
+enum UserRole {
+  AGENCY_MANAGER
+  HR_MANAGER
+  SALES_AGENT
+}
+
+// User model with multi-tenant support
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  firstName   String
+  lastName    String
+  phone       String?
+  role        UserRole
+  isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  agencyId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  agency      Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  customers   Customer[]
+  policies    Policy[]
+  sales       Sale[]
+
+  @@map("users")
+}
+
+// Customer model
+model Customer {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String
+  address     String?
+  dateOfBirth DateTime?
+  tinNumber   String?  // Tax Identification Number
+  companyName String?  // For corporate customers
+  companyReg  String?  // Company registration number
+  isCorporate Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  agencyId    String
+  assignedTo  String?  // Sales agent ID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  agency      Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  salesAgent  User?    @relation(fields: [assignedTo], references: [id])
+  policies    Policy[]
+  sales       Sale[]
+
+  @@map("customers")
+}
+
+// Insurance partner model
+model InsurancePartner {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  logo        String?
+  isActive    Boolean  @default(true)
+  agencyId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  agency      Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  products    InsuranceProduct[]
+  policies    Policy[]
+
+  @@map("insurance_partners")
+}
+
+// Insurance product model
+model InsuranceProduct {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String   // e.g., "Motor", "Health", "Life", "Property"
+  premium     Decimal  @db.Decimal(10, 2)
+  commission  Decimal  @db.Decimal(5, 2) // Commission percentage
+  isActive    Boolean  @default(true)
+  partnerId   String
+  agencyId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  partner     InsurancePartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  agency      Agency           @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  policies    Policy[]
+
+  @@map("insurance_products")
+}
+
+// Policy status enum
+enum PolicyStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PENDING
+}
+
+// Policy model
+model Policy {
+  id          String       @id @default(cuid())
+  policyNumber String      @unique
+  customerId  String
+  productId   String
+  partnerId   String
+  salesAgentId String
+  agencyId    String
+  status      PolicyStatus @default(DRAFT)
+  startDate   DateTime
+  endDate     DateTime
+  premium     Decimal      @db.Decimal(10, 2)
+  commission  Decimal      @db.Decimal(10, 2)
+  documents   String[]     // Array of document URLs
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  customer    Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product     InsuranceProduct @relation(fields: [productId], references: [id])
+  partner     InsurancePartner @relation(fields: [partnerId], references: [id])
+  salesAgent  User             @relation(fields: [salesAgentId], references: [id])
+  agency      Agency           @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  sales       Sale[]
+  reminders   PolicyReminder[]
+
+  @@map("policies")
+}
+
+// Sale model for tracking sales performance
+model Sale {
+  id          String   @id @default(cuid())
+  policyId    String   @unique
+  customerId  String
+  salesAgentId String
+  agencyId    String
+  amount      Decimal  @db.Decimal(10, 2)
+  commission  Decimal  @db.Decimal(10, 2)
+  saleDate    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  policy      Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  salesAgent  User     @relation(fields: [salesAgentId], references: [id])
+  agency      Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@map("sales")
+}
+
+// Policy reminder model for expiry notifications
+model PolicyReminder {
+  id          String   @id @default(cuid())
+  policyId    String
+  reminderDate DateTime
+  isSent      Boolean  @default(false)
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  policy      Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@map("policy_reminders")
+}
+
+// Audit log for tracking changes
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  agencyId    String
+  action      String   // CREATE, UPDATE, DELETE
+  tableName   String
+  recordId    String
+  oldValues   String?  // JSON string of old values
+  newValues   String?  // JSON string of new values
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@map("audit_logs")
+} 
