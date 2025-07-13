@@ -35,7 +35,7 @@ import {
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import { useSelector, useDispatch } from 'react-redux';
-import { RootState } from '../store';
+import { RootState, AppDispatch } from '../store';
 import { logout } from '../store/slices/authSlice';
 
 const drawerWidth = 240;
@@ -58,7 +58,7 @@ const Layout: React.FC = () => {
   
   const navigate = useNavigate();
   const location = useLocation();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   
   const { user } = useSelector((state: RootState) => state.auth);
 

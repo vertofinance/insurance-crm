@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../services/database';
@@ -60,7 +60,7 @@ const router = Router();
  *               items:
  *                 $ref: '#/components/schemas/User'
  */
-router.get('/', async (req, res) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const { agencyId } = req.user as any;
     
@@ -81,9 +81,9 @@ router.get('/', async (req, res) => {
       }
     });
 
-    res.json(users);
+    return res.json(users);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch users' });
+    return res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
 
@@ -109,7 +109,7 @@ router.get('/', async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/User'
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { agencyId } = req.user as any;
@@ -138,9 +138,9 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json(user);
+    return res.json(user);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch user' });
+    return res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
 
@@ -190,8 +190,8 @@ router.post('/', [
   body('firstName').notEmpty().trim(),
   body('lastName').notEmpty().trim(),
   body('role').isIn(['AGENCY_MANAGER', 'HR_MANAGER', 'SALES_AGENT']),
-  body('phone').optional().isMobilePhone()
-], async (req, res) => {
+  body('phone').optional().isMobilePhone('any')
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -211,9 +211,11 @@ router.post('/', [
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    const user = await prisma.user.create({
+    // Create user
+    const newUser = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
@@ -232,14 +234,13 @@ router.post('/', [
         role: true,
         isActive: true,
         createdAt: true,
-        updatedAt: true,
         password: false
       }
     });
 
-    res.status(201).json(user);
+    return res.status(201).json(newUser);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create user' });
+    return res.status(500).json({ error: 'Failed to create user' });
   }
 });
 
@@ -280,12 +281,12 @@ router.post('/', [
  *         description: User updated successfully
  */
 router.put('/:id', [
+  body('email').optional().isEmail().normalizeEmail(),
   body('firstName').optional().notEmpty().trim(),
   body('lastName').optional().notEmpty().trim(),
   body('role').optional().isIn(['AGENCY_MANAGER', 'HR_MANAGER', 'SALES_AGENT']),
-  body('phone').optional().isMobilePhone(),
-  body('isActive').optional().isBoolean()
-], async (req, res) => {
+  body('phone').optional().isMobilePhone('any'),
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -298,22 +299,21 @@ router.put('/:id', [
 
     // Remove password from update data if present
     delete updateData.password;
-    delete updateData.email; // Email should not be updated via this endpoint
 
-    const user = await prisma.user.updateMany({
+    const user = await prisma.user.findFirst({
       where: { 
         id,
         agencyId 
-      },
-      data: updateData
+      }
     });
 
-    if (user.count === 0) {
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const updatedUser = await prisma.user.findFirst({
-      where: { id, agencyId },
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: updateData,
       select: {
         id: true,
         email: true,
@@ -329,9 +329,9 @@ router.put('/:id', [
       }
     });
 
-    res.json(updatedUser);
+    return res.json(updatedUser);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update user' });
+    return res.status(500).json({ error: 'Failed to update user' });
   }
 });
 
@@ -371,7 +371,7 @@ router.put('/:id', [
 router.put('/:id/password', [
   body('currentPassword').notEmpty(),
   body('newPassword').isLength({ min: 6 })
-], async (req, res) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -404,9 +404,77 @@ router.put('/:id/password', [
       data: { password: hashedPassword }
     });
 
-    res.json({ message: 'Password updated successfully' });
+    return res.json({ message: 'Password updated successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update password' });
+    return res.status(500).json({ error: 'Failed to update password' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/{id}/status:
+ *   patch:
+ *     summary: Update user status
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               isActive:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: User status updated successfully
+ */
+router.patch('/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+    const { agencyId } = req.user as any;
+
+    const user = await prisma.user.findFirst({
+      where: { 
+        id,
+        agencyId 
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: { isActive },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        lastLogin: true,
+        createdAt: true,
+        updatedAt: true,
+        password: false
+      }
+    });
+
+    return res.json(updatedUser);
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to update user status' });
   }
 });
 
@@ -428,27 +496,34 @@ router.put('/:id/password', [
  *       200:
  *         description: User deactivated successfully
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { agencyId } = req.user as any;
 
-    const user = await prisma.user.updateMany({
+    const user = await prisma.user.findFirst({
       where: { 
         id,
         agencyId,
-        id: { not: (req.user as any).id } // Prevent self-deactivation
-      },
+        AND: {
+          id: { not: (req.user as any).id } // Prevent self-deactivation
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Soft delete by setting isActive to false
+    await prisma.user.update({
+      where: { id },
       data: { isActive: false }
     });
 
-    if (user.count === 0) {
-      return res.status(404).json({ error: 'User not found or cannot be deactivated' });
-    }
-
-    res.json({ message: 'User deactivated successfully' });
+    return res.json({ message: 'User deactivated successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to deactivate user' });
+    return res.status(500).json({ error: 'Failed to deactivate user' });
   }
 });
 

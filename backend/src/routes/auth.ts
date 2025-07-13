@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
@@ -46,7 +46,7 @@ const router = Router();
 router.post('/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 })
-], async (req, res) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -109,14 +109,14 @@ router.post('/login', [
     // Remove password from response
     const { password: _, ...userWithoutPassword } = user;
 
-    res.json({
+    return res.json({
       success: true,
       token,
       user: userWithoutPassword
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Internal server error'
     });
@@ -169,8 +169,8 @@ router.post('/register', [
   body('firstName').notEmpty().trim(),
   body('lastName').notEmpty().trim(),
   body('role').isIn([UserRole.HR_MANAGER, UserRole.SALES_AGENT]),
-  body('phone').optional().isMobilePhone()
-], async (req, res) => {
+  body('phone').optional().isMobilePhone('any')
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -222,14 +222,14 @@ router.post('/register', [
       }
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'User created successfully',
       user: newUser
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Internal server error'
     });
@@ -248,7 +248,7 @@ router.post('/register', [
  *       200:
  *         description: Current user profile
  */
-router.get('/me', async (req, res) => {
+router.get('/me', async (req: Request, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
@@ -260,19 +260,6 @@ router.get('/me', async (req, res) => {
             code: true
           }
         }
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        phone: true,
-        role: true,
-        agencyId: true,
-        isActive: true,
-        lastLogin: true,
-        createdAt: true,
-        agency: true
       }
     });
 
@@ -283,13 +270,13 @@ router.get('/me', async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       user
     });
   } catch (error) {
     console.error('Get profile error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Internal server error'
     });
@@ -326,7 +313,7 @@ router.get('/me', async (req, res) => {
 router.post('/change-password', [
   body('currentPassword').notEmpty(),
   body('newPassword').isLength({ min: 6 })
-], async (req, res) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -370,13 +357,13 @@ router.post('/change-password', [
       data: { password: hashedNewPassword }
     });
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Password changed successfully'
     });
   } catch (error) {
     console.error('Change password error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Internal server error'
     });

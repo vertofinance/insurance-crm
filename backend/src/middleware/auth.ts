@@ -22,13 +22,14 @@ export const authenticateToken = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
     if (!token) {
-      return res.status(401).json({ message: 'Access token required' });
+      res.status(401).json({ error: 'Access token required' });
+      return;
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
@@ -52,7 +53,8 @@ export const authenticateToken = async (
     });
 
     if (!user || !user.isActive || !user.agency.isActive) {
-      return res.status(401).json({ message: 'Invalid or inactive user' });
+      res.status(401).json({ error: 'Invalid or inactive user' });
+      return;
     }
 
     req.user = {
@@ -64,21 +66,23 @@ export const authenticateToken = async (
 
     next();
   } catch (error) {
-    return res.status(403).json({ message: 'Invalid token' });
+    res.status(403).json({ error: 'Invalid token' });
   }
 };
 
 // Role-based authorization middleware
 export const authorizeRoles = (...roles: UserRole[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
-      return res.status(401).json({ message: 'Authentication required' });
+      res.status(401).json({ message: 'Authentication required' });
+      return;
     }
 
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ 
+      res.status(403).json({ 
         message: 'Insufficient permissions for this action' 
       });
+      return;
     }
 
     next();
@@ -86,23 +90,26 @@ export const authorizeRoles = (...roles: UserRole[]) => {
 };
 
 // Agency-specific authorization (ensures users can only access their agency's data)
-export const authorizeAgency = (req: Request, res: Response, next: NextFunction) => {
+export const authorizeAgency = (req: Request, res: Response, next: NextFunction): void => {
   if (!req.user) {
-    return res.status(401).json({ message: 'Authentication required' });
+    res.status(401).json({ message: 'Authentication required' });
+    return;
   }
 
   // For agency managers, they can access all data within their agency
   if (req.user.role === UserRole.AGENCY_MANAGER) {
-    return next();
+    next();
+    return;
   }
 
   // For other roles, check if they're accessing their own agency's data
   const requestedAgencyId = req.params.agencyId || req.body.agencyId;
   
   if (requestedAgencyId && requestedAgencyId !== req.user.agencyId) {
-    return res.status(403).json({ 
+    res.status(403).json({ 
       message: 'Access denied to other agency data' 
     });
+    return;
   }
 
   next();
@@ -113,9 +120,10 @@ export const authorizeSalesAgent = async (
   req: Request, 
   res: Response, 
   next: NextFunction
-) => {
+): Promise<void> => {
   if (!req.user) {
-    return res.status(401).json({ message: 'Authentication required' });
+    res.status(401).json({ error: 'Authentication required' });
+    return;
   }
 
   if (req.user.role === UserRole.SALES_AGENT) {
@@ -131,9 +139,10 @@ export const authorizeSalesAgent = async (
       });
 
       if (!customer) {
-        return res.status(403).json({ 
+        res.status(403).json({ 
           message: 'Access denied to customer data' 
         });
+        return;
       }
     }
   }
@@ -142,9 +151,10 @@ export const authorizeSalesAgent = async (
 };
 
 // HR Manager authorization (can only manage users)
-export const authorizeHRManager = (req: Request, res: Response, next: NextFunction) => {
+export const authorizeHRManager = (req: Request, res: Response, next: NextFunction): void => {
   if (!req.user) {
-    return res.status(401).json({ message: 'Authentication required' });
+    res.status(401).json({ error: 'Authentication required' });
+    return;
   }
 
   if (req.user.role === UserRole.HR_MANAGER) {
@@ -153,9 +163,10 @@ export const authorizeHRManager = (req: Request, res: Response, next: NextFuncti
     const currentPath = req.path;
     
     if (!allowedPaths.some(path => currentPath.startsWith(path))) {
-      return res.status(403).json({ 
+      res.status(403).json({ 
         message: 'HR Manager can only access user management features' 
       });
+      return;
     }
   }
 

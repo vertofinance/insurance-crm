@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { body, validationResult, query } from 'express-validator';
 import { prisma } from '../services/database';
 
@@ -100,11 +100,13 @@ const router = Router();
 router.get('/', [
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+  query('search').optional().isString(),
   query('status').optional().isIn(['DRAFT', 'ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING']),
   query('customerId').optional().isString(),
-  query('salesAgentId').optional().isString(),
-  query('search').optional().isString()
-], async (req, res) => {
+  query('productId').optional().isString(),
+  query('partnerId').optional().isString(),
+  query('salesAgentId').optional().isString()
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -112,17 +114,26 @@ router.get('/', [
     }
 
     const { agencyId } = req.user as any;
-    const page = (req.query.page as number) || 1;
-    const limit = (req.query.limit as number) || 10;
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const search = req.query.search as string;
     const status = req.query.status as string;
     const customerId = req.query.customerId as string;
+    const productId = req.query.productId as string;
+    const partnerId = req.query.partnerId as string;
     const salesAgentId = req.query.salesAgentId as string;
-    const search = req.query.search as string;
 
     const skip = (page - 1) * limit;
 
     // Build where clause
     const where: any = { agencyId };
+
+    if (search) {
+      where.OR = [
+        { policyNumber: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } }
+      ];
+    }
 
     if (status) {
       where.status = status;
@@ -132,15 +143,16 @@ router.get('/', [
       where.customerId = customerId;
     }
 
-    if (salesAgentId) {
-      where.salesAgentId = salesAgentId;
+    if (productId) {
+      where.productId = productId;
     }
 
-    if (search) {
-      where.OR = [
-        { policyNumber: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } }
-      ];
+    if (partnerId) {
+      where.partnerId = partnerId;
+    }
+
+    if (salesAgentId) {
+      where.salesAgentId = salesAgentId;
     }
 
     const [policies, total] = await Promise.all([
@@ -155,8 +167,8 @@ router.get('/', [
               id: true,
               firstName: true,
               lastName: true,
-              companyName: true,
-              isCorporate: true
+              email: true,
+              phone: true
             }
           },
           product: {
@@ -169,14 +181,16 @@ router.get('/', [
           partner: {
             select: {
               id: true,
-              name: true
+              name: true,
+              code: true
             }
           },
           salesAgent: {
             select: {
               id: true,
               firstName: true,
-              lastName: true
+              lastName: true,
+              email: true
             }
           }
         }
@@ -186,7 +200,7 @@ router.get('/', [
 
     const pages = Math.ceil(total / limit);
 
-    res.json({
+    return res.json({
       policies,
       pagination: {
         page,
@@ -196,7 +210,7 @@ router.get('/', [
       }
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch policies' });
+    return res.status(500).json({ error: 'Failed to fetch policies' });
   }
 });
 
@@ -218,7 +232,7 @@ router.get('/', [
  *       200:
  *         description: Policy details
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { agencyId } = req.user as any;
@@ -236,8 +250,9 @@ router.get('/:id', async (req, res) => {
             lastName: true,
             email: true,
             phone: true,
-            companyName: true,
-            isCorporate: true
+            address: true,
+            isCorporate: true,
+            companyName: true
           }
         },
         product: {
@@ -254,8 +269,9 @@ router.get('/:id', async (req, res) => {
           select: {
             id: true,
             name: true,
-            email: true,
-            phone: true
+            code: true,
+            phone: true,
+            email: true
           }
         },
         salesAgent: {
@@ -263,11 +279,9 @@ router.get('/:id', async (req, res) => {
             id: true,
             firstName: true,
             lastName: true,
-            email: true
+            email: true,
+            phone: true
           }
-        },
-        reminders: {
-          orderBy: { reminderDate: 'asc' }
         }
       }
     });
@@ -276,9 +290,9 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Policy not found' });
     }
 
-    res.json(policy);
+    return res.json(policy);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch policy' });
+    return res.status(500).json({ error: 'Failed to fetch policy' });
   }
 });
 
@@ -334,60 +348,49 @@ router.post('/', [
   body('customerId').notEmpty().isString(),
   body('productId').notEmpty().isString(),
   body('partnerId').notEmpty().isString(),
-  body('startDate').isISO8601().toDate(),
-  body('endDate').isISO8601().toDate(),
-  body('premium').isFloat({ min: 0 }),
-  body('commission').optional().isFloat({ min: 0 }),
-  body('documents').optional().isArray(),
+  body('startDate').notEmpty().isISO8601(),
+  body('endDate').notEmpty().isISO8601(),
+  body('premium').notEmpty().isFloat({ min: 0 }),
   body('notes').optional().isString()
-], async (req, res) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { agencyId, id: salesAgentId } = req.user as any;
-    const policyData = req.body;
+    const { agencyId } = req.user as any;
+    const policyData = {
+      ...req.body,
+      agencyId,
+      salesAgentId: (req.user as any).id,
+      status: 'DRAFT'
+    };
 
-    // Validate dates
-    const startDate = new Date(policyData.startDate);
-    const endDate = new Date(policyData.endDate);
+    // Get product to calculate commission
+    const product = await prisma.insuranceProduct.findUnique({
+      where: { id: policyData.productId }
+    });
 
-    if (startDate >= endDate) {
-      return res.status(400).json({ error: 'End date must be after start date' });
+    if (!product) {
+      return res.status(400).json({ error: 'Product not found' });
     }
 
-    // Generate policy number
-    const policyNumber = `POL-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-
-    // Calculate commission if not provided
-    if (!policyData.commission) {
-      const product = await prisma.insuranceProduct.findUnique({
-        where: { id: policyData.productId }
-      });
-      
-      if (product) {
-        policyData.commission = (policyData.premium * product.commission) / 100;
-      }
+    // Calculate commission
+    if (product.commission) {
+      policyData.commission = (policyData.premium * Number(product.commission)) / 100;
     }
 
     const policy = await prisma.policy.create({
-      data: {
-        ...policyData,
-        policyNumber,
-        salesAgentId,
-        agencyId,
-        status: 'DRAFT'
-      },
+      data: policyData,
       include: {
         customer: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            companyName: true,
-            isCorporate: true
+            email: true,
+            phone: true
           }
         },
         product: {
@@ -400,22 +403,24 @@ router.post('/', [
         partner: {
           select: {
             id: true,
-            name: true
+            name: true,
+            code: true
           }
         },
         salesAgent: {
           select: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            email: true
           }
         }
       }
     });
 
-    res.status(201).json(policy);
+    return res.status(201).json(policy);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create policy' });
+    return res.status(500).json({ error: 'Failed to create policy' });
   }
 });
 
@@ -464,14 +469,11 @@ router.post('/', [
  *         description: Policy updated successfully
  */
 router.put('/:id', [
-  body('status').optional().isIn(['DRAFT', 'ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING']),
-  body('startDate').optional().isISO8601().toDate(),
-  body('endDate').optional().isISO8601().toDate(),
+  body('startDate').optional().isISO8601(),
+  body('endDate').optional().isISO8601(),
   body('premium').optional().isFloat({ min: 0 }),
-  body('commission').optional().isFloat({ min: 0 }),
-  body('documents').optional().isArray(),
   body('notes').optional().isString()
-], async (req, res) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -480,40 +482,29 @@ router.put('/:id', [
 
     const { id } = req.params;
     const { agencyId } = req.user as any;
-    const updateData = req.body;
 
-    // Validate dates if both are provided
-    if (updateData.startDate && updateData.endDate) {
-      const startDate = new Date(updateData.startDate);
-      const endDate = new Date(updateData.endDate);
-
-      if (startDate >= endDate) {
-        return res.status(400).json({ error: 'End date must be after start date' });
-      }
-    }
-
-    const policy = await prisma.policy.updateMany({
+    const policy = await prisma.policy.findFirst({
       where: { 
         id,
         agencyId 
-      },
-      data: updateData
+      }
     });
 
-    if (policy.count === 0) {
+    if (!policy) {
       return res.status(404).json({ error: 'Policy not found' });
     }
 
-    const updatedPolicy = await prisma.policy.findFirst({
-      where: { id, agencyId },
+    const updatedPolicy = await prisma.policy.update({
+      where: { id },
+      data: req.body,
       include: {
         customer: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            companyName: true,
-            isCorporate: true
+            email: true,
+            phone: true
           }
         },
         product: {
@@ -526,22 +517,24 @@ router.put('/:id', [
         partner: {
           select: {
             id: true,
-            name: true
+            name: true,
+            code: true
           }
         },
         salesAgent: {
           select: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            email: true
           }
         }
       }
     });
 
-    res.json(updatedPolicy);
+    return res.json(updatedPolicy);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update policy' });
+    return res.status(500).json({ error: 'Failed to update policy' });
   }
 });
 
@@ -563,31 +556,67 @@ router.put('/:id', [
  *       200:
  *         description: Policy activated successfully
  */
-router.put('/:id/activate', async (req, res) => {
+router.put('/:id/activate', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { agencyId } = req.user as any;
 
     const policy = await prisma.policy.findFirst({
-      where: { id, agencyId }
+      where: { 
+        id,
+        agencyId 
+      }
     });
 
     if (!policy) {
       return res.status(404).json({ error: 'Policy not found' });
     }
 
-    if (policy.status !== 'DRAFT' && policy.status !== 'PENDING') {
-      return res.status(400).json({ error: 'Only draft or pending policies can be activated' });
+    if (policy.status !== 'DRAFT') {
+      return res.status(400).json({ error: 'Only draft policies can be activated' });
     }
 
-    await prisma.policy.update({
+    const updatedPolicy = await prisma.policy.update({
       where: { id },
-      data: { status: 'ACTIVE' }
+      data: { status: 'ACTIVE' },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true
+          }
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+            category: true
+          }
+        },
+        partner: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        },
+        salesAgent: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true
+          }
+        }
+      }
     });
 
-    res.json({ message: 'Policy activated successfully' });
+    return res.json(updatedPolicy);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to activate policy' });
+    return res.status(500).json({ error: 'Failed to activate policy' });
   }
 });
 
@@ -609,31 +638,67 @@ router.put('/:id/activate', async (req, res) => {
  *       200:
  *         description: Policy cancelled successfully
  */
-router.put('/:id/cancel', async (req, res) => {
+router.put('/:id/cancel', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { agencyId } = req.user as any;
 
     const policy = await prisma.policy.findFirst({
-      where: { id, agencyId }
+      where: { 
+        id,
+        agencyId 
+      }
     });
 
     if (!policy) {
       return res.status(404).json({ error: 'Policy not found' });
     }
 
-    if (policy.status === 'CANCELLED' || policy.status === 'EXPIRED') {
-      return res.status(400).json({ error: 'Policy is already cancelled or expired' });
+    if (policy.status === 'CANCELLED') {
+      return res.status(400).json({ error: 'Policy is already cancelled' });
     }
 
-    await prisma.policy.update({
+    const updatedPolicy = await prisma.policy.update({
       where: { id },
-      data: { status: 'CANCELLED' }
+      data: { status: 'CANCELLED' },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true
+          }
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+            category: true
+          }
+        },
+        partner: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        },
+        salesAgent: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true
+          }
+        }
+      }
     });
 
-    res.json({ message: 'Policy cancelled successfully' });
+    return res.json(updatedPolicy);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to cancel policy' });
+    return res.status(500).json({ error: 'Failed to cancel policy' });
   }
 });
 

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { body, validationResult, query } from 'express-validator';
 import { prisma } from '../services/database';
 
@@ -109,7 +109,7 @@ router.get('/', [
   query('search').optional().isString(),
   query('isCorporate').optional().isBoolean(),
   query('assignedTo').optional().isString()
-], async (req, res) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -117,10 +117,10 @@ router.get('/', [
     }
 
     const { agencyId } = req.user as any;
-    const page = (req.query.page as number) || 1;
-    const limit = (req.query.limit as number) || 10;
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
     const search = req.query.search as string;
-    const isCorporate = req.query.isCorporate as boolean;
+    const isCorporate = req.query.isCorporate === 'true';
     const assignedTo = req.query.assignedTo as string;
 
     const skip = (page - 1) * limit;
@@ -168,7 +168,7 @@ router.get('/', [
 
     const pages = Math.ceil(total / limit);
 
-    res.json({
+    return res.json({
       customers,
       pagination: {
         page,
@@ -178,7 +178,7 @@ router.get('/', [
       }
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch customers' });
+    return res.status(500).json({ error: 'Failed to fetch customers' });
   }
 });
 
@@ -204,7 +204,7 @@ router.get('/', [
  *             schema:
  *               $ref: '#/components/schemas/Customer'
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { agencyId } = req.user as any;
@@ -240,9 +240,9 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    res.json(customer);
+    return res.json(customer);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch customer' });
+    return res.status(500).json({ error: 'Failed to fetch customer' });
   }
 });
 
@@ -296,16 +296,16 @@ router.get('/:id', async (req, res) => {
 router.post('/', [
   body('firstName').notEmpty().trim(),
   body('lastName').notEmpty().trim(),
-  body('email').optional().isEmail().normalizeEmail(),
   body('phone').notEmpty(),
+  body('email').optional().isEmail().normalizeEmail(),
   body('address').optional().isString(),
-  body('dateOfBirth').optional().isISO8601().toDate(),
+  body('dateOfBirth').optional().isISO8601(),
   body('tinNumber').optional().isString(),
   body('companyName').optional().isString(),
   body('companyReg').optional().isString(),
   body('isCorporate').optional().isBoolean(),
   body('assignedTo').optional().isString()
-], async (req, res) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -313,20 +313,14 @@ router.post('/', [
     }
 
     const { agencyId } = req.user as any;
-    const customerData = req.body;
-
-    // If corporate customer, validate required fields
-    if (customerData.isCorporate) {
-      if (!customerData.companyName) {
-        return res.status(400).json({ error: 'Company name is required for corporate customers' });
-      }
-    }
+    const customerData = {
+      ...req.body,
+      agencyId,
+      isCorporate: req.body.isCorporate || false
+    };
 
     const customer = await prisma.customer.create({
-      data: {
-        ...customerData,
-        agencyId
-      },
+      data: customerData,
       include: {
         salesAgent: {
           select: {
@@ -339,9 +333,9 @@ router.post('/', [
       }
     });
 
-    res.status(201).json(customer);
+    return res.status(201).json(customer);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create customer' });
+    return res.status(500).json({ error: 'Failed to create customer' });
   }
 });
 
@@ -399,17 +393,16 @@ router.post('/', [
 router.put('/:id', [
   body('firstName').optional().notEmpty().trim(),
   body('lastName').optional().notEmpty().trim(),
-  body('email').optional().isEmail().normalizeEmail(),
   body('phone').optional().notEmpty(),
+  body('email').optional().isEmail().normalizeEmail(),
   body('address').optional().isString(),
-  body('dateOfBirth').optional().isISO8601().toDate(),
+  body('dateOfBirth').optional().isISO8601(),
   body('tinNumber').optional().isString(),
   body('companyName').optional().isString(),
   body('companyReg').optional().isString(),
   body('isCorporate').optional().isBoolean(),
-  body('isActive').optional().isBoolean(),
   body('assignedTo').optional().isString()
-], async (req, res) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -418,27 +411,21 @@ router.put('/:id', [
 
     const { id } = req.params;
     const { agencyId } = req.user as any;
-    const updateData = req.body;
 
-    // If corporate customer, validate required fields
-    if (updateData.isCorporate && !updateData.companyName) {
-      return res.status(400).json({ error: 'Company name is required for corporate customers' });
-    }
-
-    const customer = await prisma.customer.updateMany({
+    const customer = await prisma.customer.findFirst({
       where: { 
         id,
         agencyId 
-      },
-      data: updateData
+      }
     });
 
-    if (customer.count === 0) {
+    if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    const updatedCustomer = await prisma.customer.findFirst({
-      where: { id, agencyId },
+    const updatedCustomer = await prisma.customer.update({
+      where: { id },
+      data: req.body,
       include: {
         salesAgent: {
           select: {
@@ -451,9 +438,9 @@ router.put('/:id', [
       }
     });
 
-    res.json(updatedCustomer);
+    return res.json(updatedCustomer);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update customer' });
+    return res.status(500).json({ error: 'Failed to update customer' });
   }
 });
 
@@ -475,26 +462,31 @@ router.put('/:id', [
  *       200:
  *         description: Customer deactivated successfully
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { agencyId } = req.user as any;
 
-    const customer = await prisma.customer.updateMany({
+    const customer = await prisma.customer.findFirst({
       where: { 
         id,
         agencyId 
-      },
-      data: { isActive: false }
+      }
     });
 
-    if (customer.count === 0) {
+    if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    res.json({ message: 'Customer deactivated successfully' });
+    // Soft delete by setting isActive to false
+    await prisma.customer.update({
+      where: { id },
+      data: { isActive: false }
+    });
+
+    return res.json({ message: 'Customer deactivated successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to deactivate customer' });
+    return res.status(500).json({ error: 'Failed to deactivate customer' });
   }
 });
 
@@ -516,7 +508,7 @@ router.delete('/:id', async (req, res) => {
  *       200:
  *         description: Customer policies
  */
-router.get('/:id/policies', async (req, res) => {
+router.get('/:id/policies', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { agencyId } = req.user as any;
