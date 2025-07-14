@@ -74,9 +74,17 @@ const Layout: React.FC = () => {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
-    dispatch(logout());
-    handleProfileMenuClose();
+  const handleLogout = async () => {
+    try {
+      await dispatch(logout()).unwrap();
+      handleProfileMenuClose();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Even if logout fails, clear local state and redirect
+      handleProfileMenuClose();
+      navigate('/login');
+    }
   };
 
   const handleNavigation = (path: string) => {

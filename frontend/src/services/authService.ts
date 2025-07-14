@@ -41,6 +41,7 @@ export interface LoginResponse {
     email: string;
     firstName: string;
     lastName: string;
+    phone?: string;
     role: string;
     agencyId: string;
     isActive: boolean;
@@ -60,6 +61,12 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+export interface UpdateProfileRequest {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+}
+
 export const authService = {
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     const response = await api.post('/api/auth/login', credentials);
@@ -67,7 +74,12 @@ export const authService = {
   },
 
   async logout(): Promise<void> {
-    await api.post('/api/auth/logout');
+    try {
+      await api.post('/api/auth/logout');
+    } catch (error) {
+      // Even if the server logout fails, we should still clear local storage
+      console.warn('Server logout failed, but clearing local storage:', error);
+    }
   },
 
   async getCurrentUser(): Promise<{ user: LoginResponse['user'] }> {
@@ -77,6 +89,11 @@ export const authService = {
 
   async changePassword(passwords: ChangePasswordRequest): Promise<{ message: string }> {
     const response = await api.put('/api/auth/change-password', passwords);
+    return response.data;
+  },
+
+  async updateProfile(profileData: UpdateProfileRequest): Promise<{ message: string; user: LoginResponse['user'] }> {
+    const response = await api.put('/api/auth/update-profile', profileData);
     return response.data;
   },
 

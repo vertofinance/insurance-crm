@@ -96,68 +96,17 @@ const Dashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      // TODO: Replace with actual API call
-      // const response = await api.get('/api/dashboard/overview');
-      // setData(response.data);
       
-      // Mock data for now
-      setData({
-        overview: {
-          totalCustomers: 1250,
-          totalPolicies: 3420,
-          activePolicies: 2890,
-          totalSales: 3420,
-          totalRevenue: 1250000,
-          totalCommission: 125000
-        },
-        recentPolicies: [
-          {
-            id: '1',
-            policyNumber: 'POL-2024-001',
-            status: 'ACTIVE',
-            premium: 1200,
-            customer: {
-              firstName: 'John',
-              lastName: 'Doe',
-              isCorporate: false
-            },
-            product: {
-              name: 'Comprehensive Motor Insurance',
-              category: 'Motor'
-            }
-          },
-          {
-            id: '2',
-            policyNumber: 'POL-2024-002',
-            status: 'PENDING',
-            premium: 800,
-            customer: {
-              firstName: 'ABC',
-              lastName: 'Corporation',
-              companyName: 'ABC Corporation Ltd',
-              isCorporate: true
-            },
-            product: {
-              name: 'Family Health Insurance',
-              category: 'Health'
-            }
-          }
-        ],
-        policyStatuses: [
-          { status: 'ACTIVE', _count: { status: 2890 } },
-          { status: 'PENDING', _count: { status: 320 } },
-          { status: 'EXPIRED', _count: { status: 180 } },
-          { status: 'CANCELLED', _count: { status: 30 } }
-        ],
-        monthlySales: [
-          { saleDate: '2024-01', _sum: { amount: 120000 }, _count: { id: 45 } },
-          { saleDate: '2024-02', _sum: { amount: 135000 }, _count: { id: 52 } },
-          { saleDate: '2024-03', _sum: { amount: 142000 }, _count: { id: 58 } },
-          { saleDate: '2024-04', _sum: { amount: 128000 }, _count: { id: 49 } },
-          { saleDate: '2024-05', _sum: { amount: 156000 }, _count: { id: 63 } },
-          { saleDate: '2024-06', _sum: { amount: 168000 }, _count: { id: 67 } }
-        ]
+      const response = await fetch('http://localhost:3001/api/dashboard/overview', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
       });
+
+      if (!response.ok) throw new Error('Failed to fetch dashboard data');
+
+            const data = await response.json();
+      setData(data);
     } catch (err) {
       setError('Failed to fetch dashboard data');
     } finally {

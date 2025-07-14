@@ -6,6 +6,7 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
+  phone?: string;
   role: string;
   agencyId: string;
   isActive: boolean;
@@ -29,7 +30,7 @@ interface AuthState {
 const initialState: AuthState = {
   user: null,
   token: localStorage.getItem('token'),
-  isAuthenticated: false,
+  isAuthenticated: !!localStorage.getItem('token'),
   loading: false,
   error: null,
 };
@@ -85,6 +86,18 @@ export const changePassword = createAsyncThunk(
   }
 );
 
+export const updateProfile = createAsyncThunk(
+  'auth/updateProfile',
+  async (profileData: { firstName?: string; lastName?: string; phone?: string }, { rejectWithValue }) => {
+    try {
+      const response = await authService.updateProfile(profileData);
+      return response;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Profile update failed');
+    }
+  }
+);
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -122,10 +135,16 @@ const authSlice = createSlice({
         state.isAuthenticated = false;
         state.user = null;
         state.token = null;
+        localStorage.removeItem('token');
       })
       .addCase(logout.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+        // Even if logout fails, clear the token
+        state.isAuthenticated = false;
+        state.user = null;
+        state.token = null;
+        localStorage.removeItem('token');
       })
       // Get current user
       .addCase(getCurrentUser.pending, (state) => {
@@ -152,6 +171,19 @@ const authSlice = createSlice({
         state.loading = false;
       })
       .addCase(changePassword.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // Update profile
+      .addCase(updateProfile.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });

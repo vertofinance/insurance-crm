@@ -238,6 +238,37 @@ router.post('/register', [
 
 /**
  * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: User logout
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logout successful
+ */
+router.post('/logout', async (req: Request, res: Response) => {
+  try {
+    // For JWT-based authentication, logout is handled client-side
+    // by removing the token. The server doesn't need to do anything.
+    // However, we can add logging or audit trail here if needed.
+    
+    return res.json({
+      success: true,
+      message: 'Logout successful'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/auth/me:
  *   get:
  *     summary: Get current user profile
@@ -276,6 +307,83 @@ router.get('/me', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get profile error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/update-profile:
+ *   put:
+ *     summary: Update user profile
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               firstName:
+ *                 type: string
+ *               lastName:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ */
+router.put('/update-profile', [
+  body('firstName').optional().notEmpty().trim(),
+  body('lastName').optional().notEmpty().trim(),
+  body('phone').optional().isMobilePhone('any')
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false, 
+        errors: errors.array() 
+      });
+    }
+
+    const { firstName, lastName, phone } = req.body;
+    const updateData: any = {};
+    
+    if (firstName) updateData.firstName = firstName;
+    if (lastName) updateData.lastName = lastName;
+    if (phone) updateData.phone = phone;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: updateData,
+      include: {
+        agency: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        }
+      }
+    });
+
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = updatedUser;
+
+    return res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: userWithoutPassword
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error'

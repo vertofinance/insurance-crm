@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { Box, CircularProgress } from '@mui/material';
-import { RootState } from './store';
+import { RootState, AppDispatch } from './store';
+import { getCurrentUser } from './store/slices/authSlice';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -15,7 +16,15 @@ import Users from './pages/Users';
 import Profile from './pages/Profile';
 
 const App: React.FC = () => {
-  const { isAuthenticated, loading } = useSelector((state: RootState) => state.auth);
+  const { isAuthenticated, loading, token } = useSelector((state: RootState) => state.auth);
+  const dispatch = useDispatch<AppDispatch>();
+
+  // Check for existing token on app startup
+  useEffect(() => {
+    if (token && !isAuthenticated) {
+      dispatch(getCurrentUser());
+    }
+  }, [dispatch, token, isAuthenticated]);
 
   if (loading) {
     return (
